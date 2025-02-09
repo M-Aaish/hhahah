@@ -1,12 +1,12 @@
 import streamlit as st
 import cv2
 import numpy as np
-import matplotlib.pyplot as plt  # (only used internally; output is via streamlit)
+import matplotlib.pyplot as plt  # (used internally; output is via Streamlit)
 from scipy.spatial import Delaunay
 import random
 from io import BytesIO
 
-# ----- Your Provided Functions (with minor modifications for Streamlit) -----
+# ----- Provided Functions with Modifications -----
 
 def generate_max_random_circles(image_size=(512, 512), min_radius=50, max_radius=100, 
                                 max_attempts=50000, max_fail_attempts=10000, max_circles_limit=10):
@@ -74,8 +74,9 @@ def overlay_mask_on_image(input_image, mask_image):
     return output_image
 
 def encode(input_image, shape_type, output_path, **kwargs):
-    # The encoding function overlays triangles, rectangles, or circles
-    if shape_type.lower() == 'triangles':
+    shape_type = shape_type.lower()
+    # Use both singular and plural forms
+    if shape_type in ['triangle', 'triangles']:
         image_orig = input_image
         image_resized = cv2.resize(image_orig, (500, 500))
         padding = 30
@@ -103,7 +104,7 @@ def encode(input_image, shape_type, output_path, **kwargs):
             overlay_img = cv2.addWeighted(overlay_img, 1 - alpha, overlay_temp, alpha, 0)
         original_resized = image_resized
 
-    elif shape_type.lower() == 'rectangles':
+    elif shape_type in ['rectangle', 'rectangles']:
         image_orig = input_image
         image_resized = cv2.resize(image_orig, (256, 256))
         h, w, _ = image_resized.shape
@@ -157,7 +158,7 @@ def encode(input_image, shape_type, output_path, **kwargs):
             overlay_img[:, :, c] = (1 - mask_alpha) * image_resized[:, :, c] + mask_alpha * output_mask[:, :, c]
         original_resized = image_resized
 
-    elif shape_type.lower() == 'circles':
+    elif shape_type in ['circle', 'circles']:
         image_orig = input_image
         image_resized = cv2.resize(image_orig, (512, 512))
         h, w, _ = image_resized.shape
@@ -173,21 +174,21 @@ def encode(input_image, shape_type, output_path, **kwargs):
         averaged_circle_image = compute_average_under_circles(image_resized, resized_circle_image, circles)
         overlay_img = overlay_mask_on_image(image_resized, averaged_circle_image)
         original_resized = image_resized
-        boundaries = circles  # For circles we return the circles list
+        boundaries = circles  # For circles, boundaries are the circle list.
 
     else:
         raise ValueError("Unsupported shape type. Choose from 'triangles', 'rectangles', or 'circles'.")
 
     # Create an encoding mask for boundaries.
     encode_mask = np.zeros(original_resized.shape[:2], dtype=np.uint8)
-    if shape_type.lower() == 'triangles':
+    if shape_type in ['triangle', 'triangles']:
         for tri in boundaries:
             pts = np.int32(tri)
             cv2.polylines(encode_mask, [pts], isClosed=True, color=255, thickness=1)
-    elif shape_type.lower() == 'rectangles':
+    elif shape_type in ['rectangle', 'rectangles']:
         for (x, y, width, height) in boundaries:
             cv2.rectangle(encode_mask, (x, y), (x + width, y + height), 255, thickness=1)
-    elif shape_type.lower() == 'circles':
+    elif shape_type in ['circle', 'circles']:
         for (cx, cy, radius) in boundaries:
             cv2.circle(encode_mask, (cx, cy), radius, 255, thickness=1)
 
@@ -224,14 +225,14 @@ def encode(input_image, shape_type, output_path, **kwargs):
                 encoded_image[i, j, 1] = (encoded_image[i, j, 1] & ~1) | exp_g
                 encoded_image[i, j, 2] = (encoded_image[i, j, 2] & ~1) | exp_r
 
-    # Return circles for 'circles', boundaries for 'triangles' and 'rectangles'
-    if shape_type.lower() == 'circles':
+    # Return circles for 'circle(s)', boundaries for 'triangle(s)' and 'rectangle(s)'
+    if shape_type in ['circle', 'circles']:
         return encoded_image, boundaries
     else:
         return encoded_image, boundaries
 
 def decode(encoded_image, shape_type, boundaries=None):
-    # This decode function extracts the blue channel LSB and uses corner markers for validation.
+    shape_type = shape_type.lower()
     if encoded_image is None:
         st.error("Error: Encoded image is None.")
         return None, None, None
@@ -271,8 +272,8 @@ def decode(encoded_image, shape_type, boundaries=None):
         binary_image = cv2.dilate(binary_image, kernel, iterations=1)
     rgb_values = []
     annotated = encoded_image.copy()
-    if shape_type.lower() == 'triangles':
-        # If no boundaries were provided, try to detect triangles via contours.
+    if shape_type in ['triangle', 'triangles']:
+        # If boundaries were not provided, try to detect triangles via contours.
         triangles = []
         if boundaries is not None:
             triangles = boundaries
@@ -292,7 +293,7 @@ def decode(encoded_image, shape_type, boundaries=None):
             center_y = int(np.clip(center[1], 0, h - 1))
             b, g, r = encoded_image[center_y, center_x]
             rgb_values.append([r, g, b])
-    elif shape_type.lower() == 'rectangles':
+    elif shape_type in ['rectangle', 'rectangles']:
         ret, thresh = cv2.threshold(binary_image, 127, 255, cv2.THRESH_BINARY)
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
         closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=1)
@@ -305,7 +306,7 @@ def decode(encoded_image, shape_type, boundaries=None):
                 center_y = y + h_rect // 2
                 b, g, r = encoded_image[center_y, center_x]
                 rgb_values.append([r, g, b])
-    elif shape_type.lower() == 'circles':
+    elif shape_type in ['circle', 'circles']:
         ret, thresh = cv2.threshold(binary_image, 127, 255, cv2.THRESH_BINARY)
         contours, _ = cv2.findContours(binary_image, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
         for cnt in contours:
@@ -331,17 +332,18 @@ app_mode = st.sidebar.selectbox("Select Mode", ["Image Generator", "Shape Detect
 if app_mode == "Image Generator":
     st.header("Image Generator")
     uploaded_file = st.file_uploader("Upload an Image", type=["jpg", "jpeg", "png"])
+    # You can use either singular or plural names; our functions support both.
     shape_option = st.selectbox("Select Shape", ["Triangle", "Rectangle", "Circle"])
     
     if st.button("Generate"):
         if uploaded_file is not None:
-            # Read image file as OpenCV image (BGR)
+            # Read image file as an OpenCV image (BGR)
             file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
             img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
             if img is None:
                 st.error("Error reading the image. Please try another file.")
             else:
-                shape = shape_option.lower()
+                shape = shape_option  # Our encode function now accepts singular or plural.
                 encoded_image, boundaries = encode(img, shape, output_path="")
                 # Convert BGR to RGB for display in Streamlit
                 encoded_image_rgb = cv2.cvtColor(encoded_image, cv2.COLOR_BGR2RGB)
@@ -370,8 +372,7 @@ elif app_mode == "Shape Detector":
             if encoded_image is None:
                 st.error("Error reading the image. Please try another file.")
             else:
-                shape = shape_option.lower()
-                # For triangle detection, if boundaries were not saved with the image, we pass boundaries=None.
+                shape = shape_option  # Our decode function now accepts singular or plural.
                 binary_img, annotated_img, rgb_vals = decode(encoded_image, shape, boundaries=None)
                 annotated_img_rgb = cv2.cvtColor(annotated_img, cv2.COLOR_BGR2RGB)
                 st.image(annotated_img_rgb, caption=f"Decoded Annotated {shape_option} Image", use_column_width=True)
